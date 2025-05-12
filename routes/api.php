@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JadwalController;
 use App\Http\Controllers\AgoraChatController;
-
+use App\Http\Controllers\RiasecController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -29,6 +29,7 @@ Route::middleware(['auth:sanctum', 'checkrole:gurubk'])->group(function () {
   Route::get('/jadwal', [JadwalController::class, 'index']);
   Route::delete('/jadwal/{id}', [JadwalController::class, 'destroy']);
   Route::patch('/jadwal/{id}', [JadwalController::class, 'update']);
+  Route::get('/riasec-results', [RiasecController::class, 'guruResults']);
 
 });
 
@@ -40,6 +41,8 @@ Route::middleware(['auth:sanctum', 'checkrole:siswa'])->group(function () {
   // Siswa memilih jadwal tertentu (pakai ID)
   Route::post('/jadwal/pilih/{id}', [JadwalController::class, 'pilihJadwal']);
   Route::post('/jadwal/batal/{id}', [JadwalController::class, 'batalJadwal']);
+
+
   // Melihat jadwal yang sudah dipilih oleh siswa itu sendiri
   Route::get('/jadwal-saya', [JadwalController::class, 'jadwalSaya']);
 });
@@ -49,9 +52,40 @@ Route::get('/test', function () {
 
 
 Route::middleware('auth:sanctum')->group(function () {
-  // RTC (video) token untuk jadwal tertentu
-  Route::get('/jadwal/{id}/rtc-token', [JadwalController::class, 'generateRtcToken']);
+  // Token RTC video
+  Route::get('/jadwal/{id}/rtc-token', 
+      [JadwalController::class, 'generateRtcToken']
+  );
 
-  Route::get('/agora/chat-token',[AgoraChatController::class, 'chatToken']);
-
+  // Token Chat Agora, channel jadi bagian path
+  Route::get(
+      '/agora/chat-token/{channel}', 
+      [AgoraChatController::class, 'chatToken']
+  );
 });
+
+// sebelum route auth
+Route::get('/debug-agora', function () {
+  return response()->json([
+      'app_id'     => config('services.agora.app_id'),
+      'app_cert'   => config('services.agora.app_certificate'),
+      'cert_length'=> strlen(config('services.agora.app_certificate')),
+  ]);
+});
+// Semua route di bawah /api/riasec
+Route::prefix('riasec')
+    ->middleware('auth:sanctum')     // semua harus login
+    ->group(function () {
+        
+        // ------------------
+        // Untuk Siwa (role checkrole:siswa)
+        // ------------------
+        Route::middleware('checkrole:siswa')->group(function() {
+            Route::get('questions',    [RiasecController::class,'questions']);
+            Route::post('responses',   [RiasecController::class,'storeResponses']);
+            Route::get('results',      [RiasecController::class,'results']);
+            Route::get('history',      [RiasecController::class,'history']);
+        });
+
+       
+    });

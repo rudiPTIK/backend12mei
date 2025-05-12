@@ -48,4 +48,6 @@ class User extends Authenticatable
     function hasRole($role){
         return $this->role == UserRole::from($role);
     }
+
+   
 }

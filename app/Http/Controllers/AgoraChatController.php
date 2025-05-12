@@ -1,51 +1,61 @@
 <?php
+// app/Http/Controllers/AgoraChatController.php
 
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use BoogieFromZk\AgoraToken\ChatTokenBuilder2;
+use Symfony\Component\HttpFoundation\Response;
 
 class AgoraChatController extends Controller
 {
-    public function chatToken(Request $request)
+    /**
+     * @param  Request  $request
+     * @param  string   $channel   // diambil dari path
+     */
+    public function chatToken(Request $request, string $channel): JsonResponse
     {
-        $channel = $request->query('channel');
-        if (! $channel) {
-            return response()->json(['error' => 'channel is required'], 422);
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $userId  = (string) Auth::id();
-        $appId   = config('services.agora.app_id');
-        $appCert = config('services.agora.app_certificate');
-        $expire  = 3600;
+        $userId       = (string) $user->id;
+        $appId        = config('services.agora.app_id');
+        $appCert      = config('services.agora.app_certificate');
+        $expireSecond = 3600;
 
-        // Debug: cek nilai kredensial
-        Log::info("ChatToken debug: appId={$appId}, appCert=" . ($appCert ? 'set' : 'null'));
+        Log::info("Generate chat token for user={$userId}, channel={$channel}");
 
         try {
             $token = ChatTokenBuilder2::buildUserToken(
                 $appId,
                 $appCert,
                 $userId,
-                $expire
+                $expireSecond
             );
         } catch (\Throwable $e) {
-            Log::error('ChatTokenBuilder2 threw exception: '.$e->getMessage());
-            return response()->json(['error'=>'Token generation failed'], 500);
+            Log::error("ChatTokenBuilder2 error: {$e->getMessage()}", ['exception' => $e]);
+            return response()->json(
+                ['error' => 'Failed to generate chat token'],
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
         }
 
-        // Debug: token kosong?
         if (empty($token)) {
-            Log::error('ChatTokenBuilder2 returned empty token');
-            return response()->json(['error'=>'Token is empty'], 500);
+            Log::error("Empty token for user={$userId}");
+            return response()->json(
+                ['error' => 'Token generation returned empty'],
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
         }
 
         return response()->json([
             'token'   => $token,
-            'channel' => $channel,
             'uid'     => $userId,
-        ], 200);
+            'channel' => $channel,
+        ], Response::HTTP_OK);
     }
 }
