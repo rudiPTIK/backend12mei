@@ -8,7 +8,7 @@ use App\Models\RiasecResult;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
+//testinggggg
 class RiasecController extends Controller
 {
     // Ambil semua pertanyaan
