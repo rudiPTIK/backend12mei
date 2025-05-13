@@ -184,7 +184,7 @@ class JadwalController extends Controller
        $channel  = 'jadwal_' . $jadwalId;
        $uid      = Auth::id();
        $expireTs = Carbon::now()->addDay()->timestamp;
-
+    
        // Validasi konfigurasi
        if (empty($appId) || empty($appCert)) {
            Log::error('AGORA_APP_ID or AGORA_APP_CERTIFICATE is missing');
