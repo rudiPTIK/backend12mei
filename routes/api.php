@@ -89,3 +89,6 @@ Route::prefix('riasec')
 
        
     });
+
+
+    
