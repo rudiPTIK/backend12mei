@@ -1,23 +1,23 @@
 <?php
 
-// database/migrations/xxxx_xx_xx_create_riasec_questions_table.php
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 class CreateRiasecQuestionsTable extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('riasec_questions', function (Blueprint $table) {
             $table->id();
-            $table->text('text');
-            $table->enum('riasec_type', ['R','I','A','S','E','C']);
+            $table->integer('question_id')->unique()->comment('ID soal dari O*NET');
+            $table->text('question_text')->comment('Teks soal');
+            $table->string('category', 50)->comment('Kategori RIASEC');
             $table->timestamps();
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('riasec_questions');
     }

@@ -13,13 +13,16 @@ class CheckRole
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, $role): Response
-    {
-        // Bisa case-insensitive biar aman
-        if (Auth::check() && strtolower(Auth::user()->role) == strtolower($role)) {
+   public function handle(Request $request, Closure $next, ...$roles): Response
+{
+    if (auth()->check()) {
+        $userRole = strtolower(auth()->user()->role);
+        $roles = array_map('strtolower', $roles);
+        if (in_array($userRole, $roles, true)) {
             return $next($request);
         }
-
-        return response()->json(['message' => 'Akses ditolak!'], 403);
     }
+    return response()->json(['message' => 'Akses ditolak!'], 403);
+}
+
 }

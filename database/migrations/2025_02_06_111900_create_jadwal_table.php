@@ -15,6 +15,8 @@ return new class extends Migration {
             $table->dateTime('waktu_selesai');
             $table->enum('status', ['tersedia', 'dipesan', 'selesai'])->default('tersedia');
             $table->timestamps();
+
+            
         });
     }
 

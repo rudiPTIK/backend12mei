@@ -6,13 +6,15 @@ namespace App\Models;
 
 use App\enums\UserRole;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -20,34 +22,31 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'role',
+        'name','email','password',
+        'phone','gender','birthdate','avatar_path','role'
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<int, string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $hidden = ['password','remember_token'];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
+        'birthdate' => 'date',
     ];
-    function hasRole($role){
-        return $this->role == UserRole::from($role);
+
+    protected $appends = ['avatar_url'];
+
+    public function getAvatarUrlAttribute()
+    {
+        if (!$this->avatar_path) return null;
+         return asset('storage/' . ltrim($this->avatar_path, '/'));
     }
+public function consultationsAsStudent()
+{
+    return $this->hasMany(Consultation::class, 'student_id');
+}
+public function consultationsAsCounselor()
+{
+    return $this->hasMany(Consultation::class, 'counselor_id');
+}
 
    
 }

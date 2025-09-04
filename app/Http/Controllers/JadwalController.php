@@ -1,271 +1,252 @@
 <?php
 
 namespace App\Http\Controllers;
-use App\Models\RiasecResult;
-use App\Models\RiasecCareer;
+
 use App\Models\Jadwal;
+use App\Models\User;
+use App\Models\Consultation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\log;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use BoogieFromZk\AgoraToken\RtcTokenBuilder2;
 
 class JadwalController extends Controller
-
 {
-    public function __construct()
+    // ======== SISWA ========
+
+    // Siswa memilih jadwal yang masih "tersedia"
+    public function pilihJadwal($id)
     {
-        // → Tambahkan ini:
-        $this->middleware(function ($request, $next) {
-            // hapus semua jadwal yang waktu_selesai-nya sudah lewat
-            Jadwal::where('waktu_selesai', '<', Carbon::now())->delete();
-            return $next($request);
-        });
-    }
-    //siswa memilih jadwal
-     public function pilihJadwal($id) {
-          // Validasi Input
-          $jadwal = Jadwal::findOrFail($id);
-    
-        
-            // Cek apakah jadwal sudah dipesan oleh siswa lain
-            if($jadwal->status !=='tersedia'){
-                return response()->json(['message' =>'Jadwal sudah dipesan'], 400);
-            }
-            
-        
-            // Update status jadwal
-            $jadwal->update([
-                'siswa_id' => Auth::id(),
-                'status' => 'dipesan'
-            ]);
-        
-            return response()->json(['message' => 'Jadwal berhasil dipilih'], 200);
+        $jadwal = Jadwal::findOrFail($id);
+
+        if ($jadwal->status !== 'tersedia') {
+            return response()->json(['message' => 'Jadwal sudah dipesan / tidak tersedia'], 400);
         }
-    //menampilkan jadwal yang tersedia
-    public function getJadwal(){
-        $jadwal = Jadwal::where('status', 'tersedia')->get();
+
+        $jadwal->update([
+            'siswa_id' => Auth::id(),
+            'status'   => 'dipesan',
+        ]);
+
+        return response()->json(['message' => 'Jadwal berhasil dipilih'], 200);
+    }
+
+    // List jadwal yang tersedia (untuk siswa memilih)
+    public function getJadwal()
+    {
+        $jadwal = Jadwal::where('status', 'tersedia')->orderBy('waktu_mulai')->get();
         return response()->json($jadwal);
     }
+
+    // Jadwal milik siswa login
     public function jadwalSaya()
     {
         $siswaId = Auth::id();
-    
-        $jadwal = Jadwal::with(['guruBK' => function ($q) {
-            $q->select('id', 'name', 'email'); // select kolom yang dibutuhkan
-        }])->where('siswa_id', $siswaId)->get();
-    
+
+        $jadwal = Jadwal::with(['guruBK:id,name,email'])
+            ->where('siswa_id', $siswaId)
+            ->orderBy('waktu_mulai')
+            ->get();
+
         return response()->json([
             'message' => 'Berhasil ambil jadwal siswa',
-            'data' => $jadwal
+            'data'    => $jadwal,
         ]);
     }
-    
+
+    // Siswa membatalkan jadwalnya
     public function batalJadwal($id)
     {
         $jadwal = Jadwal::where('id', $id)
             ->where('siswa_id', Auth::id())
             ->first();
-    
+
         if (!$jadwal) {
             return response()->json(['message' => 'Jadwal tidak ditemukan atau bukan milik Anda'], 404);
         }
-    
+
         $jadwal->update([
             'siswa_id' => null,
-            'status' => 'tersedia'
+            'status'   => 'tersedia',
         ]);
-    
+
         return response()->json(['message' => 'Jadwal berhasil dibatalkan'], 200);
     }
-    
 
-    
-    //guru bk melihat jadwal yang sudah dipesan
-    public function getJadwalDipesan(){
-        $jadwal = Jadwal::whereNotNull('siswa_id')->with('siswa')->get();
+    // ======== GURU BK ========
+
+    // Jadwal yang sudah dipesan (tampilkan consultation_id jika ada)
+    public function getJadwalDipesan()
+    {
+        $jadwal = Jadwal::with(['siswa:id,name,email', 'consultation:id,jadwal_id'])
+            ->whereNotNull('siswa_id')
+            ->orderBy('waktu_mulai')
+            ->get()
+            ->map(function ($j) {
+                return [
+                    'id'              => $j->id,
+                    'waktu_mulai'     => $j->waktu_mulai,
+                    'waktu_selesai'   => $j->waktu_selesai,
+                    'status'          => $j->status,
+                    'siswa'           => $j->siswa,
+                    'consultation_id' => optional($j->consultation)->id,
+                ];
+            });
+
         return response()->json($jadwal);
     }
+
+    // List jadwal milik Guru BK login
     public function index()
     {
-        $guruId = Auth::id();   // id guru BK yang sedang login
-    
-        $jadwal = Jadwal::with('siswa')        // relasi siswa
-            ->where('guru_bk_id', $guruId)     // ⬅️ filter milik guru ini saja
+        $guruId = Auth::id();
+
+        $jadwal = Jadwal::with('siswa:id,name')
+            ->where('guru_bk_id', $guruId)
             ->orderBy('waktu_mulai')
             ->get()
             ->map(function ($item) {
                 return [
-                    'id'          => $item->id, 
+                    'id'          => $item->id,
                     'tanggal'     => date('Y-m-d', strtotime($item->waktu_mulai)),
-                    'waktu_mulai' => date('H:i',   strtotime($item->waktu_mulai)),
+                    'waktu_mulai' => date('H:i', strtotime($item->waktu_mulai)),
                     'status'      => $item->status,
-                    'nama_siswa'  => optional($item->siswa)->name,   // atau ->name
+                    'nama_siswa'  => optional($item->siswa)->name,
                 ];
             });
-    
+
         return response()->json($jadwal);
     }
-    
-       
-       
-    //tambah jadwal
 
-    public function store(Request $request) {
+    // Tambah jadwal (Guru BK)
+    public function store(Request $request)
+    {
         $request->validate([
-            'waktu_mulai' => 'required|date',
+            'waktu_mulai'   => 'required|date',
             'waktu_selesai' => 'required|date|after:waktu_mulai',
         ]);
 
         $jadwal = Jadwal::create([
-            'guru_bk_id' => Auth::id(),
-            'waktu_mulai' => $request->waktu_mulai,
-            'waktu_selesai' => $request->waktu_selesai,
-            'status' => 'tersedia',
+            'guru_bk_id'   => Auth::id(),
+            'waktu_mulai'  => $request->waktu_mulai,
+            'waktu_selesai'=> $request->waktu_selesai,
+            'status'       => 'tersedia',
         ]);
 
-        return response()->json(['message' => 'Jadwal Berhasil ditambahkan','data'=>$jadwal], 201);
+        return response()->json(['message' => 'Jadwal berhasil ditambahkan', 'data' => $jadwal], 201);
     }
 
- 
+    // Ubah jadwal (Guru BK)
     public function update(Request $request, $id)
     {
-        // Validasi data yang dikirimkan
         $request->validate([
-            'waktu_mulai' => 'required|date',
-            'waktu_selesai' => 'required|date',
-            'status' => 'required|string',
+            'waktu_mulai'   => 'required|date',
+            'waktu_selesai' => 'required|date|after_or_equal:waktu_mulai',
+            'status'        => 'required|in:tersedia,dipesan,selesai',
         ]);
-    
-        // Cari jadwal berdasarkan ID
-        $jadwal = Jadwal::find($id);
-    
-        // Jika tidak ditemukan
+
+        $jadwal = Jadwal::where('id', $id)
+            ->where('guru_bk_id', Auth::id())
+            ->first();
+
         if (!$jadwal) {
             return response()->json(['message' => 'Jadwal tidak ditemukan'], 404);
         }
-    
-        // Update jadwal dengan data baru
+
         $jadwal->update([
-            'waktu_mulai' => $request->waktu_mulai,
-            'waktu_selesai' => $request->waktu_selesai,
-            'status' => $request->status,
+            'waktu_mulai'  => $request->waktu_mulai,
+            'waktu_selesai'=> $request->waktu_selesai,
+            'status'       => $request->status,
         ]);
-    
-        // Kembalikan response berhasil
+
         return response()->json(['message' => 'Jadwal berhasil diperbarui', 'data' => $jadwal], 200);
     }
-    
 
+    // Hapus jadwal (Guru BK)
+    public function destroy($id)
+    {
+        $jadwal = Jadwal::where('id', $id)
+            ->where('guru_bk_id', Auth::id())
+            ->first();
 
-    
-    //guru bk menghapus jadwal
-    public function destroy($id){
-        $jadwal = Jadwal::where('id', $id)->where('guru_bk_id', Auth::id())->first();
-        if(!$jadwal){
-            return response()->json(['message'=> 'jadwal tidak ditemukan'], 404);
+        if (!$jadwal) {
+            return response()->json(['message' => 'Jadwal tidak ditemukan'], 404);
         }
+
         $jadwal->delete();
-        return response()->json(['message' => 'jadwal berhasil dihapus']);
+        return response()->json(['message' => 'Jadwal berhasil dihapus']);
     }
 
-    //melihat siswa yang memilih jadwal tertentu
-    public function daftarsiswa($id){
-        $jadwal = Jadwal::with('siswa')->findOrFail($id);
+    // Lihat detail siswa pada jadwal tertentu (Guru BK)
+    public function daftarsiswa($id)
+    {
+        $jadwal = Jadwal::with('siswa:id,name,email')->findOrFail($id);
         return response()->json($jadwal);
     }
 
-   public function generateRtcToken($jadwalId)
-   {
-       // Ambil kredensial dari config/services.php
-       $appId    = config('services.agora.app_id');
-       $appCert  = config('services.agora.app_certificate');
-       $channel  = 'jadwal_' . $jadwalId;
-       $uid      = Auth::id();
-       $expireTs = Carbon::now()->addDay()->timestamp;
-    
-       // Validasi konfigurasi
-       if (empty($appId) || empty($appCert)) {
-           Log::error('AGORA_APP_ID or AGORA_APP_CERTIFICATE is missing');
-           return response()->json(['error' => 'Server misconfiguration'], 500);
-       }
+    // ======== AGORA RTC TOKEN (Guru BK & Siswa yang TERLIBAT) ========
 
-       try {
-           /** 
-            * buildTokenWithUid sudah return value yang bertipe string,
-            * tapi untuk Intelephense kita cast sekali lagi menjadi string.
-            */
-           $token = (string) RtcTokenBuilder2::buildTokenWithUid(
-               $appId,
-               $appCert,
-               $channel,
-               $uid,
-               RtcTokenBuilder2::ROLE_PUBLISHER,
-               $expireTs,
-               $expireTs
-           );
-       } catch (\Throwable $e) {
-           Log::error('Error generating Agora token: ' . $e->getMessage());
-           return response()->json(['error' => 'Failed to generate token'], 500);
-       }
-
-       // Debug: cek panjang token
-       Log::info('Generated Agora token length: ' . strlen($token));
-
-       if (empty($token)) {
-           Log::error('Generated token is empty');
-           return response()->json(['error' => 'Failed to generate token'], 500);
-       }
-
-       // Kembalikan response JSON
-       return response()->json([
-           'channel' => $channel,
-           'uid'     => $uid,
-           'token'   => $token,
-       ], 200);
-   }
-    
-    public function history(Request $request)
+    public function generateRtcToken($jadwalId)
     {
-        $userId = $request->user()->id;
+        $userId = Auth::id();
 
-        // Ambil semua entri RiasecResult untuk user, terbaru dulu
-        $results = RiasecResult::where('user_id', $userId)
-                              ->orderBy('created_at', 'desc')
-                              ->get();
+        // Ambil jadwal & cek partisipasi user
+        $jadwal = Jadwal::select('id', 'guru_bk_id', 'siswa_id', 'status')
+            ->findOrFail($jadwalId);
 
-        // Map ke array dengan tanggal, skor, persentase, domain, rekomendasi
-        $data = $results->map(function($h) {
-            $top2 = explode(',', $h->top_domains);
-            $careers = RiasecCareer::whereIn('riasec_type', $top2)
-                                   ->get(['name','description','riasec_type']);
+        // Hanya peserta yang boleh minta token
+        $isCounselor = ($jadwal->guru_bk_id === $userId);
+        $isStudent   = ($jadwal->siswa_id   === $userId);
 
-            // Hitung persentase lagi (atau simpan di table jika diinginkan)
-            $percent = [];
-            foreach (['R','I','A','S','E','C'] as $t) {
-                $count = DB::table('riasec_questions')->where('riasec_type',$t)->count();
-                $max = $count * 5;
-                $rawVal = $h->{"score_$t"};
-                $percent[$t] = $max ? round($rawVal/$max*100,1) : 0;
-            }
+        if (!$isCounselor && !$isStudent) {
+            return response()->json(['message' => 'Forbidden: bukan peserta jadwal'], 403);
+        }
 
-            return [
-                'date'            => $h->created_at->toDateTimeString(),
-                'raw_scores'      => [
-                    'R' => $h->score_R,
-                    'I' => $h->score_I,
-                    'A' => $h->score_A,
-                    'S' => $h->score_S,
-                    'E' => $h->score_E,
-                    'C' => $h->score_C,
-                ],
-                'percentages'     => $percent,
-                'top_domains'     => $top2,
-                'recommendations' => $careers->toArray(),
-            ];
-        });
+        // Wajib sudah dipesan (bukan "tersedia")
+        if ($jadwal->status !== 'dipesan' && $jadwal->status !== 'selesai') {
+            return response()->json(['message' => 'Jadwal belum dipesan'], 422);
+        }
 
-        return response()->json($data);
+        // Kredensial dari config/services.php (pastikan sudah diset)
+        $appId   = (string) config('services.agora.app_id');
+        $appCert = (string) config('services.agora.app_certificate');
+
+        if (empty($appId) || empty($appCert)) {
+            Log::error('AGORA_APP_ID or AGORA_APP_CERTIFICATE is missing');
+            return response()->json(['error' => 'Server misconfiguration'], 500);
+        }
+
+        $channel  = 'jadwal_' . $jadwal->id;
+        $uid      = $userId; // gunakan user id sebagai uid (atau mapping sendiri)
+        $expireTs = Carbon::now()->addDay()->timestamp;
+
+        try {
+            $token = (string) RtcTokenBuilder2::buildTokenWithUid(
+                $appId,
+                $appCert,
+                $channel,
+                (int) $uid,
+                RtcTokenBuilder2::ROLE_PUBLISHER,
+                $expireTs,
+                $expireTs
+            );
+        } catch (\Throwable $e) {
+            Log::error('Error generating Agora token: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to generate token'], 500);
+        }
+
+        if (empty($token)) {
+            Log::error('Generated token is empty');
+            return response()->json(['error' => 'Failed to generate token'], 500);
+        }
+
+        Log::info('Generated Agora token length: ' . strlen($token) . " for user {$userId}");
+
+        return response()->json([
+            'channel' => $channel,
+            'uid'     => (int) $uid,
+            'token'   => $token,
+        ], 200);
     }
 }

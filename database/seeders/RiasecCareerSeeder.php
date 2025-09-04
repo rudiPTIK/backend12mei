@@ -17,7 +17,7 @@ class RiasecCareerSeeder extends Seeder
             ['Analis Data','Menganalisis dataset untuk insight bisnis','I'],
             ['Desainer Grafis','Menciptakan karya visual untuk berbagai media','A'],
             ['Penulis Kreatif','Menulis naskah, cerita, atau konten kreatif','A'],
-            ['Konsel    or Pendidikan','Membantu siswa mengatasi masalah belajar','S'],
+            ['Konselor Pendidikan','Membantu siswa mengatasi masalah belajar','S'],
             ['Guru ','Memberikan bimbingan karir dan pribadi kepada siswa','S'],
             ['Manajer Proyek','Memimpin tim untuk menyelesaikan proyek','E'],
             ['Sales Executive','Menjual produk dan layanan kepada klien','E'],
